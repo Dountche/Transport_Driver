@@ -29,11 +29,11 @@ export const ENDPOINTS = {
   RESERVATIONS_UPDATE_STATUS: '/reservations/:id/statut',
   
   // Véhicules - Chauffeur
-  VEHICULES_MES: '/vehicules/mes-vehicules',
-  VEHICULES_GPS: '/vehicules/:vehiculeId/gps',
-  VEHICULES_TRAJETS: '/vehicules/:vehiculeId/trajets',
-  VEHICULES_POSITION: '/vehicules/:vehiculeId/position',
-  VEHICULES_HISTORIQUE: '/vehicules/:vehiculeId/historique-gps',
+  VEHICULES_MES: '/chauffeurvehicule/mes-vehicules',
+  VEHICULES_GPS: '/chauffeurvehicule/:vehiculeId/gps',
+  VEHICULES_TRAJETS: '/chauffeurvehicule/:vehiculeId/trajets',
+  VEHICULES_POSITION: '/chauffeurvehicule/:vehiculeId/position',
+  VEHICULES_HISTORIQUE: '/chauffeurvehicule/:vehiculeId/historique-gps',
   
   // Transport
   TRAJETS: '/trajets',
@@ -42,8 +42,8 @@ export const ENDPOINTS = {
   
   // GPS
   POSITIONS: '/positions',
-  POSITIONS_LAST: '/positions/last/:vehiculeId',
-  POSITIONS_ROUTE: '/positions/route/:vehiculeId',
+  POSITIONS_LAST: '/positions/last',
+  POSITIONS_ROUTE: '/positions/route',
   
   // Dashboard
   DASHBOARD_CHAUFFEUR: '/dashboard/chauffeur',

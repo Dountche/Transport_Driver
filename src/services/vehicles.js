@@ -47,10 +47,11 @@ export const vehicleService = {
   // Envoyer position GPS
   async sendPosition(vehicleId, latitude, longitude) {
     try {
-      const response = await api.post(
-        ENDPOINTS.VEHICULES_POSITION.replace(':vehiculeId', vehicleId), 
-        { latitude, longitude }
-      );
+      const response = await api.post(ENDPOINTS.POSITIONS, {
+        vehicule_id: vehicleId,
+        latitude,
+        longitude
+      });
       return { success: true, data: response.data };
     } catch (error) {
       return { 

@@ -3,68 +3,76 @@ import {
   View,
   Text,
   StyleSheet,
+  Dimensions,
+  ActivityIndicator,
   TouchableOpacity,
   Alert,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { MapView, Marker, Polyline } from 'expo-maps';
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
+import { transportService } from '../../services/transport';
 import { vehicleService } from '../../services/vehicles';
+import { gpsTrackingService } from '../../services/gpsTracking';
 import { storage } from '../../services/storage';
 
-const MapViewScreen = ({ navigation }) => {
-  const [selectedVehicle, setSelectedVehicle] = useState(null);
-  const [vehicles, setVehicles] = useState([]);
-  const [lines, setLines] = useState([]);
+const { width, height } = Dimensions.get('window');
+const ASPECT_RATIO = width / height;
+const LATITUDE_DELTA = 0.0922;
+const LONGITUDE_DELTA = LATITUDE_DELTA * ASPECT_RATIO;
+
+// Coordonnées par défaut pour Abidjan
+const INITIAL_REGION = {
+  latitude: 5.3364,
+  longitude: -4.0267,
+  latitudeDelta: LATITUDE_DELTA,
+  longitudeDelta: LONGITUDE_DELTA,
+};
+
+const DriverMapView = ({ navigation }) => {
+  const [region, setRegion] = useState(INITIAL_REGION);
   const [loading, setLoading] = useState(true);
-  const [mapRegion, setMapRegion] = useState({
-    latitude: 14.6928,
-    longitude: -17.4467,
-    latitudeDelta: 0.0922,
-    longitudeDelta: 0.0421,
-  });
+  const [vehicules, setVehicules] = useState([]);
+  const [lignes, setLignes] = useState([]);
+  const [selectedVehicle, setSelectedVehicle] = useState(null);
+  const [showRoutes, setShowRoutes] = useState(true);
+  const [gpsEnabled, setGpsEnabled] = useState(false);
+  const [currentPosition, setCurrentPosition] = useState(null);
+  const [showDriverPosition, setShowDriverPosition] = useState(false);
 
   useEffect(() => {
-    loadData();
+    loadMapData();
+    initializeGpsTracking();
   }, []);
 
-  const loadData = async () => {
+  const loadMapData = async () => {
+    setLoading(true);
     try {
-      // Récupérer le véhicule sélectionné
-      const savedVehicle = await storage.getSelectedVehicle();
-      if (savedVehicle) {
-        setSelectedVehicle(savedVehicle);
-      }
-
+      console.log('Loading map data...');
       // Charger les véhicules du chauffeur
-      const vehiclesResult = await vehicleService.getDriverVehicles();
-      if (vehiclesResult.success) {
-        setVehicles(vehiclesResult.data.vehicules || []);
+      const vehiculesResult = await transportService.getDriverVehicules();
+      console.log('Vehicules result:', vehiculesResult);
+      
+      if (vehiculesResult.success) {
+        console.log('Vehicules data:', vehiculesResult.data);
+        const vehiculesWithPositions = await Promise.all(
+          vehiculesResult.data.map(async (vehicule) => {
+            const positionResult = await transportService.getLastVehiclePosition(vehicule.id);
+            return {
+              ...vehicule,
+              position: positionResult.success ? positionResult.data : null
+            };
+          })
+        );
+        console.log('Vehicules with positions:', vehiculesWithPositions);
+        setVehicules(vehiculesWithPositions);
       }
 
-      // Charger les lignes (simulation - à adapter selon votre API)
-      setLines([
-        {
-          id: 1,
-          nom: 'Ligne 1',
-          color: '#FF3B30',
-          coordinates: [
-            { latitude: 14.6928, longitude: -17.4467 },
-            { latitude: 14.7000, longitude: -17.4500 },
-            { latitude: 14.7100, longitude: -17.4600 },
-          ]
-        },
-        {
-          id: 2,
-          nom: 'Ligne 2',
-          color: '#007AFF',
-          coordinates: [
-            { latitude: 14.6800, longitude: -17.4300 },
-            { latitude: 14.6900, longitude: -17.4400 },
-            { latitude: 14.7000, longitude: -17.4500 },
-          ]
-        }
-      ]);
+      // Charger les lignes
+      const lignesResult = await transportService.getLignes();
+      if (lignesResult.success) {
+        setLignes(lignesResult.data);
+      }
 
     } catch (error) {
       console.error('Error loading map data:', error);
@@ -74,32 +82,107 @@ const MapViewScreen = ({ navigation }) => {
     }
   };
 
-  const handleVehicleSelection = async (vehicle) => {
-    setSelectedVehicle(vehicle);
-    await storage.setSelectedVehicle(vehicle);
+  const initializeGpsTracking = async () => {
+    try {
+      const savedVehicle = await storage.getSelectedVehicle();
+      const gpsEnabled = await storage.getGpsEnabled();
+      
+      if (savedVehicle) {
+        setSelectedVehicle(savedVehicle);
+        setGpsEnabled(gpsEnabled);
+        
+        if (gpsEnabled && savedVehicle.statut_gps) {
+          await gpsTrackingService.startTracking(savedVehicle);
+        }
+      }
+    } catch (error) {
+      console.error('Error initializing GPS tracking:', error);
+    }
+  };
+
+  const getCurrentLocation = async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Erreur', 'Permission de localisation refusée');
+        return;
+      }
+
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+
+      const position = {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+      };
+
+      setCurrentPosition(position);
+      setShowDriverPosition(true);
+
+      // Centrer la carte sur la position du chauffeur
+      setRegion({
+        latitude: position.latitude,
+        longitude: position.longitude,
+        latitudeDelta: LATITUDE_DELTA / 4,
+        longitudeDelta: LONGITUDE_DELTA / 4,
+      });
+    } catch (error) {
+      Alert.alert('Erreur', 'Impossible d\'obtenir la position actuelle');
+    }
+  };
+
+  const handleVehicleSelection = async (vehicule) => {
+    setSelectedVehicle(vehicule);
+    await storage.setSelectedVehicle(vehicule);
     
-    // Centrer la carte sur le véhicule
-    if (vehicle.position) {
-      setMapRegion({
-        latitude: vehicle.position.latitude,
-        longitude: vehicle.position.longitude,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
+    if (vehicule.position) {
+      setRegion({
+        latitude: vehicule.position.latitude,
+        longitude: vehicule.position.longitude,
+        latitudeDelta: LATITUDE_DELTA / 4,
+        longitudeDelta: LONGITUDE_DELTA / 4,
       });
     }
   };
 
-  const toggleGps = async (vehicle) => {
+  const toggleGps = async (vehicule) => {
+    // Vérifier que le véhicule est sélectionné
+    if (!vehicule || !vehicule.id) {
+      Alert.alert('Erreur', 'Veuillez d\'abord sélectionner un véhicule');
+      return;
+    }
+
     try {
-      const result = await vehicleService.updateGpsStatus(vehicle.id, !vehicle.statut_gps);
+      const result = await vehicleService.updateGpsStatus(vehicule.id, !vehicule.statut_gps);
       if (result.success) {
-        setVehicles(vehicles.map(v => 
-          v.id === vehicle.id ? { ...v, statut_gps: !v.statut_gps } : v
+        const updatedVehicule = { ...vehicule, statut_gps: !vehicule.statut_gps };
+        
+        // Mettre à jour la liste des véhicules
+        setVehicules(vehicules.map(v => 
+          v.id === vehicule.id ? updatedVehicule : v
         ));
-        await storage.setGpsEnabled(!vehicle.statut_gps);
+
+        // Mettre à jour le véhicule sélectionné
+        if (selectedVehicle?.id === vehicule.id) {
+          setSelectedVehicle(updatedVehicule);
+          await storage.setSelectedVehicle(updatedVehicule);
+        }
+
+        // Gérer le tracking GPS
+        if (updatedVehicule.statut_gps) {
+          setGpsEnabled(true);
+          await storage.setGpsEnabled(true);
+          await gpsTrackingService.startTracking(updatedVehicule);
+        } else {
+          setGpsEnabled(false);
+          await storage.setGpsEnabled(false);
+          await gpsTrackingService.stopTracking();
+        }
+
         Alert.alert(
-          'GPS ' + (!vehicle.statut_gps ? 'activé' : 'désactivé'),
-          `Le GPS du véhicule ${vehicle.immatriculation} a été ${!vehicle.statut_gps ? 'activé' : 'désactivé'}`
+          'GPS ' + (!vehicule.statut_gps ? 'activé' : 'désactivé'),
+          `Le GPS du véhicule ${vehicule.immatriculation} a été ${!vehicule.statut_gps ? 'activé' : 'désactivé'}`
         );
       } else {
         Alert.alert('Erreur', result.message);
@@ -109,14 +192,171 @@ const MapViewScreen = ({ navigation }) => {
     }
   };
 
-  const VehicleCard = ({ vehicle }) => (
-    <TouchableOpacity
-      style={[
-        styles.vehicleCard,
-        selectedVehicle?.id === vehicle.id && styles.selectedVehicle
-      ]}
-      onPress={() => handleVehicleSelection(vehicle)}
-    >
+  const renderVehicleMarkers = () => {
+    return vehicules
+      .filter(vehicule => vehicule.position && vehicule.id)
+      .map((vehicule) => (
+        <Marker
+          key={`vehicle-${vehicule.id}`}
+          coordinate={{
+            latitude: vehicule.position.latitude,
+            longitude: vehicule.position.longitude,
+          }}
+          title={`Véhicule ${vehicule.immatriculation}`}
+          description={`Type: ${vehicule.type} - GPS: ${vehicule.statut_gps ? 'Actif' : 'Inactif'}`}
+          onPress={() => handleVehicleSelection(vehicule)}
+        >
+          <View style={[
+            styles.vehicleMarker, 
+            { backgroundColor: vehicule.statut_gps ? '#34C759' : '#FF3B30' }
+          ]}>
+            <Ionicons name="bus" size={20} color="#fff" />
+          </View>
+        </Marker>
+      ));
+  };
+
+  const renderRouteLines = () => {
+    if (!showRoutes) return null;
+
+    return lignes.map((ligne) => {
+      const arrets = Array.isArray(ligne.arrets) ? ligne.arrets : [];
+      
+      const coordinates = arrets.map(arret => ({
+        latitude: arret.latitude || 5.3364,
+        longitude: arret.longitude || -4.0267,
+      }));
+
+      if (coordinates.length < 2) return null;
+
+      return (
+        <Polyline
+          key={`line-${ligne.id}`}
+          coordinates={coordinates}
+          strokeColor="#007AFF"
+          strokeWidth={3}
+          lineDashPattern={[5, 5]}
+        />
+      );
+    });
+  };
+
+  const renderArretMarkers = () => {
+    if (!showRoutes) return null;
+
+    const markers = [];
+    lignes.forEach((ligne) => {
+      const arrets = Array.isArray(ligne.arrets) ? ligne.arrets : [];
+      
+      arrets.forEach((arret, index) => {
+        if (arret.latitude && arret.longitude) {
+          markers.push(
+            <Marker
+              key={`arret-${ligne.id}-${index}`}
+              coordinate={{
+                latitude: arret.latitude,
+                longitude: arret.longitude,
+              }}
+              title={arret.nom}
+              description={`Ligne: ${ligne.nom}`}
+              pinColor="#FF9500"
+            />
+          );
+        }
+      });
+    });
+
+    return markers;
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#007AFF" />
+        <Text style={styles.loadingText}>Chargement de la carte...</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      <MapView
+        provider={PROVIDER_GOOGLE}
+        style={styles.map}
+        region={region}
+        onRegionChangeComplete={setRegion}
+        showsUserLocation
+        showsMyLocationButton
+      >
+        {renderVehicleMarkers()}
+        {renderArretMarkers()}
+        {renderRouteLines()}
+        {showDriverPosition && currentPosition && (
+          <Marker
+            coordinate={currentPosition}
+            title="Ma position"
+            description="Position actuelle du chauffeur"
+          >
+            <View style={styles.driverMarker}>
+              <Ionicons name="person" size={20} color="#fff" />
+            </View>
+          </Marker>
+        )}
+      </MapView>
+
+      {/* Contrôles de la carte */}
+      <View style={styles.controlsContainer}>
+        <TouchableOpacity
+          style={styles.controlButton}
+          onPress={() => setShowRoutes(!showRoutes)}
+        >
+          <Ionicons 
+            name={showRoutes ? 'eye' : 'eye-off'} 
+            size={20} 
+            color="#007AFF" 
+          />
+          <Text style={styles.controlText}>Routes</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.controlButton}
+          onPress={loadMapData}
+        >
+          <Ionicons name="refresh" size={20} color="#007AFF" />
+          <Text style={styles.controlText}>Actualiser</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.controlButton}
+          onPress={() => navigation.navigate('VehicleSelection')}
+        >
+          <Ionicons name="car" size={20} color="#007AFF" />
+          <Text style={styles.controlText}>Véhicules</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.controlButton}
+          onPress={getCurrentLocation}
+        >
+          <Ionicons name="locate" size={20} color="#007AFF" />
+          <Text style={styles.controlText}>Ma position</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Sélection de véhicule */}
+      <View style={styles.vehicleSelectionContainer}>
+        <Text style={styles.vehicleSelectionTitle}>Sélectionner votre véhicule</Text>
+        {vehicules.length > 0 ? (
+          <View style={styles.vehiclesList}>
+            {vehicules.map(vehicle => (
+              <TouchableOpacity
+                key={`map-vehicle-${vehicle?.id || Math.random()}`}
+                style={[
+                  styles.vehicleCard,
+                  selectedVehicle?.id === vehicle.id && styles.selectedVehicle
+                ]}
+                onPress={() => handleVehicleSelection(vehicle)}
+              >
       <View style={styles.vehicleHeader}>
         <Text style={styles.vehicleTitle}>{vehicle.immatriculation}</Text>
         <View style={[
@@ -129,6 +369,7 @@ const MapViewScreen = ({ navigation }) => {
         </View>
       </View>
       <Text style={styles.vehicleType}>{vehicle.type}</Text>
+                {selectedVehicle?.id === vehicle.id && (
       <TouchableOpacity
         style={[
           styles.gpsButton,
@@ -145,119 +386,61 @@ const MapViewScreen = ({ navigation }) => {
           {vehicle.statut_gps ? 'Arrêter GPS' : 'Démarrer GPS'}
         </Text>
       </TouchableOpacity>
-    </TouchableOpacity>
-  );
-
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <Text>Chargement de la carte...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Carte</Text>
-        <TouchableOpacity
-          style={styles.refreshButton}
-          onPress={loadData}
-        >
-          <Ionicons name="refresh" size={24} color="#007AFF" />
+                )}
         </TouchableOpacity>
+            ))}
       </View>
-
-      <View style={styles.mapContainer}>
-        <MapView
-          style={styles.map}
-          region={mapRegion}
-          onRegionChangeComplete={setMapRegion}
-        >
-          {/* Lignes */}
-          {lines.map(line => (
-            <Polyline
-              key={line.id}
-              coordinates={line.coordinates}
-              strokeColor={line.color}
-              strokeWidth={3}
-            />
-          ))}
-
-          {/* Véhicules */}
-          {vehicles.map(vehicle => (
-            vehicle.position && (
-              <Marker
-                key={vehicle.id}
-                coordinate={vehicle.position}
-                title={vehicle.immatriculation}
-                description={vehicle.type}
-              >
-                <View style={[
-                  styles.vehicleMarker,
-                  { backgroundColor: vehicle.statut_gps ? '#34C759' : '#FF9500' }
-                ]}>
-                  <Ionicons name="car" size={20} color="#fff" />
-                </View>
-              </Marker>
-            )
-          ))}
-        </MapView>
-      </View>
-
-      {/* Liste des véhicules */}
-      <View style={styles.vehiclesContainer}>
-        <Text style={styles.vehiclesTitle}>Mes véhicules</Text>
-        {vehicles.length > 0 ? (
-          vehicles.map(vehicle => (
-            <VehicleCard key={vehicle.id} vehicle={vehicle} />
-          ))
         ) : (
           <View style={styles.emptyState}>
-            <Ionicons name="car-outline" size={32} color="#C7C7CC" />
+            <Ionicons name="car-outline" size={48} color="#C7C7CC" />
             <Text style={styles.emptyText}>Aucun véhicule assigné</Text>
           </View>
         )}
       </View>
-    </SafeAreaView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
+  },
+  map: {
+    flex: 1,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#f8f9fa',
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#666',
+  },
+  controlsContainer: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
     backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderRadius: 8,
+    padding: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#333',
+  controlButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
   },
-  refreshButton: {
-    padding: 8,
-  },
-  mapContainer: {
-    flex: 1,
-    height: 300,
-  },
-  map: {
-    flex: 1,
+  controlText: {
+    marginLeft: 5,
+    fontSize: 12,
+    color: '#007AFF',
   },
   vehicleMarker: {
     width: 40,
@@ -265,20 +448,43 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  driverMarker: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#007AFF',
+    justifyContent: 'center',
+    alignItems: 'center',
     borderWidth: 3,
     borderColor: '#fff',
   },
-  vehiclesContainer: {
+  vehicleSelectionContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
     backgroundColor: '#fff',
-    padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    maxHeight: height * 0.4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
-  vehiclesTitle: {
+  vehicleSelectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#333',
-    marginBottom: 12,
+    marginBottom: 15,
+  },
+  vehiclesList: {
+    maxHeight: height * 0.25,
   },
   vehicleCard: {
     backgroundColor: '#f8f9fa',
@@ -337,10 +543,10 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   emptyText: {
-    fontSize: 14,
+    fontSize: 16,
     color: '#666',
     marginTop: 8,
   },
 });
 
-export default MapViewScreen;
+export default DriverMapView;

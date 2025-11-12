@@ -11,7 +11,8 @@ import TicketDetail from '../screens/Tickets/TicketDetail';
 import TicketScanner from '../screens/Tickets/TicketScanner';
 import ReservationList from '../screens/Reservations/ReservationList';
 import ReservationDetail from '../screens/Reservations/ReservationDetail';
-import MapView from '../screens/Map/MapViewSimple';
+import MapView from '../screens/Map/MapView';
+import VehicleSelectionScreen from '../screens/Map/VehicleSelectionScreen';
 import GetProfil from '../screens/Profil/GetProfil';
 import EditProfil from '../screens/Profil/EditProfil';
 
@@ -67,6 +68,22 @@ const ReservationsStack = () => (
       name="ReservationDetail" 
       component={ReservationDetail} 
       options={{ title: 'Détails de la réservation' }}
+    />
+  </Stack.Navigator>
+);
+
+// Stack pour Carte
+const MapStack = () => (
+  <Stack.Navigator>
+    <Stack.Screen 
+      name="MapView" 
+      component={MapView} 
+      options={{ title: 'Carte' }}
+    />
+    <Stack.Screen 
+      name="VehicleSelection" 
+      component={VehicleSelectionScreen} 
+      options={{ title: 'Sélection de véhicule' }}
     />
   </Stack.Navigator>
 );
@@ -130,7 +147,7 @@ const TabNavigator = () => {
       />
       <Tab.Screen 
         name="Map" 
-        component={MapView}
+        component={MapStack}
         options={{ title: 'Carte' }}
       />
       <Tab.Screen 

@@ -80,6 +80,12 @@ const Dashboard = ({ navigation }) => {
   };
 
   const toggleGps = async (vehicle) => {
+    // Vérifier que le véhicule est sélectionné
+    if (!vehicle || !vehicle.id) {
+      Alert.alert('Erreur', 'Veuillez d\'abord sélectionner un véhicule');
+      return;
+    }
+
     try {
       const result = await vehicleService.updateGpsStatus(vehicle.id, !vehicle.statut_gps);
       if (result.success) {
@@ -225,7 +231,7 @@ const Dashboard = ({ navigation }) => {
           <Text style={styles.sectionTitle}>Mes véhicules</Text>
           {vehicles.length > 0 ? (
             vehicles.map(vehicle => (
-              <VehicleCard key={vehicle.id} vehicle={vehicle} />
+              <VehicleCard key={`dashboard-vehicle-${vehicle?.id || Math.random()}`} vehicle={vehicle} />
             ))
           ) : (
             <View style={styles.emptyState}>

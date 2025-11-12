@@ -12,6 +12,13 @@ const ticketReducer = (state, action) => {
       return { ...state, tickets: action.payload, loading: false };
     case 'ADD_TICKET':
       return { ...state, tickets: [action.payload, ...state.tickets] };
+    case 'UPDATE_TICKET':
+      return {
+        ...state,
+        tickets: state.tickets.map(ticket =>
+          ticket.id === action.payload.id ? { ...ticket, ...action.payload.updates } : ticket
+        )
+      };
     case 'SET_ERROR':
       return { ...state, error: action.payload, loading: false };
     case 'CLEAR_ERROR':
@@ -33,14 +40,26 @@ export const TicketProvider = ({ children }) => {
   useEffect(() => {
     // Écouter les événements WebSocket
     websocketService.on('ticketValidated', handleTicketValidated);
+    websocketService.on('paymentConfirmed', handlePaymentConfirmed);
     
     return () => {
       websocketService.off('ticketValidated', handleTicketValidated);
+      websocketService.off('paymentConfirmed', handlePaymentConfirmed);
     };
   }, []);
 
   const handleTicketValidated = (data) => {
     dispatch({ type: 'ADD_TICKET', payload: data.ticket });
+  };
+
+  const handlePaymentConfirmed = (data) => {
+    dispatch({ 
+      type: 'UPDATE_TICKET', 
+      payload: { 
+        id: data.ticket.id, 
+        updates: { statut_payer: true } 
+      } 
+    });
   };
 
   const loadTickets = async () => {
@@ -64,27 +83,32 @@ export const TicketProvider = ({ children }) => {
 
     const result = await ticketService.validateTicket(qrCode);
     
-    if (result.success) {
-      dispatch({ type: 'ADD_TICKET', payload: result.data.ticket });
-    } else {
+    dispatch({ type: 'SET_LOADING', payload: false });
+    
+    if (result.success && result.ticket) {
+      dispatch({ type: 'ADD_TICKET', payload: result.ticket });
+    } else if (!result.success) {
       dispatch({ type: 'SET_ERROR', payload: result.message });
     }
 
-    dispatch({ type: 'SET_LOADING', payload: false });
     return result;
   };
 
-  const confirmCashPayment = async (ticketId) => {
+  const confirmCashPayment = async (ticketId, montant) => {
     dispatch({ type: 'SET_LOADING', payload: true });
     dispatch({ type: 'CLEAR_ERROR' });
 
-    const result = await ticketService.confirmCashPayment(ticketId);
+    const result = await ticketService.confirmCashPayment(ticketId, montant);
     
     if (result.success) {
-      // Mettre à jour le ticket dans la liste
-      dispatch({ type: 'SET_TICKETS', payload: state.tickets.map(ticket => 
-        ticket.id === ticketId ? { ...ticket, statut_payer: true } : ticket
-      )});
+
+      dispatch({ 
+        type: 'UPDATE_TICKET', 
+        payload: { 
+          id: ticketId, 
+          updates: { statut_payer: true } 
+        } 
+      });
     } else {
       dispatch({ type: 'SET_ERROR', payload: result.message });
     }

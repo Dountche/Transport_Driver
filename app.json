@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "Transport_Driver",
-    "slug": "Transport_Driver",
+    "name": "JEL Driver",
+    "slug": "JEL-Driver",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/icons/jel.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
@@ -12,15 +12,25 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
+    "updates": {
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0,
+      "url": "https://u.expo.dev/f867aea5-0a16-406b-baea-70a4ce29e9c8"
+    },
     "assetBundlePatterns": [
       "**/*"
     ],
     "ios": {
       "supportsTablet": true,
+      "bundleIdentifier": "com.transport.driver",
+      "buildNumber": "1.0.0",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Cette application a besoin d'accéder à votre localisation pour suivre votre véhicule en temps réel.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "Cette application a besoin d'accéder à votre localisation pour suivre votre véhicule en temps réel.",
-        "NSCameraUsageDescription": "Cette application a besoin d'accéder à la caméra pour scanner les codes QR des tickets."
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Cette application a besoin d'accéder à votre localisation pour suivre votre véhicule en temps réel."
+      },
+      "runtimeVersion": {
+        "policy": "appVersion"
       }
     },
     "android": {
@@ -28,12 +38,21 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FFFFFF"
       },
+      "package": "com.transport.driver",
+      "versionCode": 1,
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
         "ACCESS_BACKGROUND_LOCATION",
-        "CAMERA"
-      ]
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ],
+      "runtimeVersion": "1.0.0"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -45,13 +64,14 @@
           "locationAlwaysAndWhenInUsePermission": "Cette application a besoin d'accéder à votre localisation pour suivre votre véhicule en temps réel."
         }
       ],
-      [
-        "expo-camera",
-        {
-          "cameraPermission": "Cette application a besoin d'accéder à la caméra pour scanner les codes QR des tickets."
-        }
-      ],
-      "expo-maps"
-    ]
+      "expo-maps",
+      "expo-font"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "f867aea5-0a16-406b-baea-70a4ce29e9c8"
+      }
+    },
+    "owner": "dountche"
   }
 }

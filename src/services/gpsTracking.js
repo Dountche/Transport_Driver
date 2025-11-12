@@ -1,5 +1,5 @@
 import * as Location from 'expo-location';
-import { vehicleService } from './vehicles';
+import { transportService } from './transport';
 import { storage } from './storage';
 
 class GpsTrackingService {
@@ -8,7 +8,9 @@ class GpsTrackingService {
     this.isTracking = false;
     this.currentVehicle = null;
     this.lastPosition = null;
+    this.currentPosition = null;
     this.trackingInterval = null;
+    this.positionUpdateInterval = null;
   }
 
   async startTracking(vehicle) {
@@ -22,15 +24,18 @@ class GpsTrackingService {
       this.currentVehicle = vehicle;
       this.isTracking = true;
 
-      // Démarrer le tracking GPS
+      // Démarrer le tracking GPS avec une fréquence plus élevée pour la précision
       this.watchId = await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.High,
-          timeInterval: 2000, // Mise à jour toutes les 2 secondes
-          distanceInterval: 10, // Mise à jour si déplacement de 10m
+          timeInterval: 1000, // Mise à jour toutes les 1 seconde
+          distanceInterval: 1, // Mise à jour si déplacement de 1m
         },
         this.handleLocationUpdate.bind(this)
       );
+
+      // Démarrer l'envoi périodique des positions toutes les 10 secondes
+      this.startPeriodicPositionUpdate();
 
       console.log(`GPS tracking démarré pour le véhicule ${vehicle.immatriculation}`);
       return true;
@@ -46,6 +51,11 @@ class GpsTrackingService {
       this.watchId = null;
     }
 
+    if (this.positionUpdateInterval) {
+      clearInterval(this.positionUpdateInterval);
+      this.positionUpdateInterval = null;
+    }
+
     this.isTracking = false;
     this.currentVehicle = null;
     this.lastPosition = null;
@@ -59,26 +69,35 @@ class GpsTrackingService {
     const { latitude, longitude } = location.coords;
     const currentPosition = { latitude, longitude };
 
-    // Vérifier si la position a changé significativement
-    if (this.hasPositionChanged(currentPosition)) {
-      try {
-        // Envoyer la position au backend
-        const result = await vehicleService.sendPosition(
-          this.currentVehicle.id,
-          latitude,
-          longitude
-        );
+    // Stocker la position actuelle pour l'envoi périodique
+    this.currentPosition = currentPosition;
+  }
 
-        if (result.success) {
-          console.log(`Position envoyée: ${latitude}, ${longitude}`);
-          this.lastPosition = currentPosition;
-        } else {
-          console.error('Erreur lors de l\'envoi de la position:', result.message);
+  startPeriodicPositionUpdate() {
+    // Envoyer la position toutes les 10 secondes
+    this.positionUpdateInterval = setInterval(async () => {
+      if (this.isTracking && this.currentVehicle && this.currentPosition) {
+        try {
+          // Vérifier si la position a changé significativement
+          if (this.hasPositionChanged(this.currentPosition)) {
+            const result = await transportService.sendPosition(
+              this.currentVehicle.id,
+              this.currentPosition.latitude,
+              this.currentPosition.longitude
+            );
+
+            if (result.success) {
+              console.log(`Position envoyée: ${this.currentPosition.latitude}, ${this.currentPosition.longitude}`);
+              this.lastPosition = this.currentPosition;
+            } else {
+              console.error('Erreur lors de l\'envoi de la position:', result.message);
+            }
+          }
+        } catch (error) {
+          console.error('Erreur lors de l\'envoi de la position:', error);
         }
-      } catch (error) {
-        console.error('Erreur lors de l\'envoi de la position:', error);
       }
-    }
+    }, 10000); // Toutes les 10 secondes
   }
 
   hasPositionChanged(newPosition) {
@@ -92,8 +111,8 @@ class GpsTrackingService {
       newPosition.longitude
     );
 
-    // Envoyer la position si le véhicule a bougé de plus de 10 mètres
-    return distance > 10;
+    // Envoyer la position si le véhicule a bougé de plus de 5 mètres
+    return distance > 5;
   }
 
   calculateDistance(lat1, lon1, lat2, lon2) {

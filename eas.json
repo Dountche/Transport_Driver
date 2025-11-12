@@ -1,0 +1,41 @@
+{
+  "cli": {
+    "version": ">= 5.0.0"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "android": {
+        "gradleCommand": ":app:assembleDebug"
+      },
+      "ios": {
+        "buildConfiguration": "Debug"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "ios": {
+        "simulator": true
+      },
+      "env": {
+        "API_URL": "https://jel-transport-backend.onrender.com"
+      }
+    },
+    "production": {
+      "android": {
+        "buildType": "apk"
+      },
+      "ios": {},
+      "env": {
+        "API_URL": "https://jel-transport-backend.onrender.com"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}
